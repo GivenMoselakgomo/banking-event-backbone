@@ -1,8 +1,7 @@
 services:
-  # Source of truth: the "core banking system"
   postgres:
-    image: postgres
-    container_name: banking-postgres
+    image: postgres:16
+    container_name: bank-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: bankadmin
@@ -11,7 +10,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
       - ./init-db:/docker-entrypoint-initdb.d
     command:
       - "postgres"
@@ -20,37 +19,13 @@ services:
       - "-c"
       - "max_wal_senders=10"
       - "-c"
-      - "max_replivation_slots=10"
+      - "max_replication_slots=10"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bankadmin -d corebank"]
       interval: 5s
       timeout: 5s
       retries: 10
-    kafka:
-      image: apache/kafka:3.7.0
-      container_name: bank-kafka
-      restart: unless-stopped
-      ports:
-      - "9092:9092"
-      - "9093:9093"
-    environment:
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,DOCKER://0.0.0.0:9094
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,DOCKER://kafka:9094
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,DOCKER:PLAINTEXT
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_INTER_BROKER_LISTENER_NAME: DOCKER
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-    healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    # Kafka broker, KRaft mode (no Zookeeper)"
-    kafka:
+  kafka:
     image: apache/kafka:3.7.0
     container_name: bank-kafka
     restart: unless-stopped
@@ -73,12 +48,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    # Kafka Connect, running the Debezium Postgres connector to stream changes from the core banking system to Kafka"
-    kafka-connect:
-      image: debezium/connect:2.7
-      container_name: bank-connect
-      restart: unless-stopped
-      depends_on:
+  kafka-connect:
+    image: debezium/connect:2.7.3.Final    
+    container_name: bank-connect
+    restart: unless-stopped
+    depends_on:
       kafka:
         condition: service_healthy
       postgres:
@@ -93,6 +67,6 @@ services:
       STATUS_STORAGE_TOPIC: connect_statuses
       CONFIG_STORAGE_REPLICATION_FACTOR: 1
       OFFSET_STORAGE_REPLICATION_FACTOR: 1
-      STATUS_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1    
 volumes:
   pgdata:
